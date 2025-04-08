@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube Transcript Tool</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: 'Arial', sans-serif; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-purple-100 min-h-screen flex flex-col items-center p-6">
+
+  <h1 class="text-4xl md:text-5xl font-bold text-purple-800 mb-4 text-center">YouTube Transcript Tool</h1>
+
+  <div class="w-full max-w-2xl">
+    <input type="text" id="youtubeUrl" placeholder="Enter YouTube URL"
+           class="w-full px-5 py-3 rounded-xl shadow-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+
+    <button onclick="fetchTranscript()"
+            class="mt-4 w-full bg-purple-600 text-white py-3 rounded-xl shadow-lg hover:bg-purple-700 transition-all font-semibold">
+      Get Transcript
+    </button>
+
+    <div id="buttons" class="mt-6 flex flex-wrap gap-3 justify-center">
+      <button onclick="download('pdf')" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Download as PDF</button>
+      <button onclick="download('docx')" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">Download as DOCX</button>
+      <button onclick="download('txt')" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600">Download as TXT</button>
+      <button onclick="copyToClipboard()" class="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-800">Copy</button>
+    </div>
+
+    <div id="transcript"
+         class="mt-8 bg-white shadow-inner border border-gray-300 rounded-xl p-4 h-80 overflow-y-scroll whitespace-pre-wrap leading-relaxed text-sm"></div>
+  </div>
+
+  <!-- Module for docx -->
+  <script type="module">
+    import * as docx from 'https://cdn.jsdelivr.net/npm/docx@8.0.2/+esm';
+
+    window.fetchTranscript = async function () {
+      const url = document.getElementById('youtubeUrl').value;
+      const response = await fetch('/get_transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await response.json();
+      document.getElementById('transcript').innerText = data.transcript || data.error;
+    };
+
+    window.copyToClipboard = function () {
+      const text = document.getElementById('transcript').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Transcript copied to clipboard!');
+      });
+    };
+
+    window.download = async function (type) {
+      const text = document.getElementById('transcript').innerText;
+
+      if (type === 'pdf') {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const margin = 10;
+        const pageWidth = doc.internal.pageSize.getWidth() - 2 * margin;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const lineHeight = 7;
+        const startY = 20;
+
+        const lines = doc.splitTextToSize(text, pageWidth);
+        let currentY = startY;
+
+        lines.forEach((line) => {
+          if (currentY + lineHeight > pageHeight - margin) {
+            doc.addPage();
+            currentY = startY;
+          }
+          doc.text(line, margin, currentY);
+          currentY += lineHeight;
+        });
+
+        doc.save('transcript.pdf');
+      }
+
+      else if (type === 'txt') {
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'transcript.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      else if (type === 'docx') {
+        const { Document, Packer, Paragraph, TextRun } = docx;
+        const lines = text.split(/\n|\r/).filter(line => line.trim() !== '');
+
+        const paragraphs = lines.map(line =>
+          new Paragraph({
+            children: [new TextRun({ text: line, font: "Arial", size: 24 })]
+          })
+        );
+
+        const doc = new Document({
+          sections: [{ properties: {}, children: paragraphs }]
+        });
+
+        const blob = await Packer.toBlob(doc);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "transcript.docx";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    };
+  </script>
+</body>
+</html>
